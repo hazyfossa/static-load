@@ -13,7 +13,7 @@ use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 // drawbacks, a proper benchmark would be nice
 
 #[allow(async_fn_in_trait)]
-pub trait Resource: Sized {
+pub trait Resource {
     type Defintion;
     type Error: Error + 'static;
 
@@ -21,7 +21,7 @@ pub trait Resource: Sized {
         type_name::<Self>()
     }
 
-    async fn load(definition: &Self::Defintion) -> Result<Self, Self::Error>;
+    async fn load(definition: &Self::Defintion) -> Result<Arc<Self>, Self::Error>;
 }
 
 pub struct ResourceCell<T: Resource + 'static> {
@@ -54,7 +54,7 @@ impl<T: Resource> ResourceCell<T> {
     /// It is recommended to call it from `main`
     pub async fn init(&self, definition: T::Defintion) -> Result<(), T::Error> {
         let instance = T::load(&definition).await?;
-        let ptr = AtomicArc::from(Arc::new(instance));
+        let ptr = AtomicArc::from(instance);
         let cached_ptr = Cache::new(ptr);
 
         // Store the defintion alongside pointer to allow for updates
@@ -108,7 +108,7 @@ impl<T: Resource> ResourceCell<T> {
         let this = this!(self.get);
 
         let new_instance = T::load(&this.definition).await?;
-        this.cached_ptr.inner().store(Arc::new(new_instance));
+        this.cached_ptr.inner().store(new_instance);
 
         Ok(())
     }
