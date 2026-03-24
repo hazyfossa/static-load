@@ -33,4 +33,11 @@ async fn any_function() {
 
     // You can trigger a reload from anywhere
     BLOB.reload().await.unwrap();
+
+    // if you want to share a pre-read configuration,
+    // the return type of .read() clones to an Arc:
+    let _blob_as_previously_read = blob.clone();
+
+    // However, .read() is so fast, you can just
+    // read a new value whenever you need one!
 }

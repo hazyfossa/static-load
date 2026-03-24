@@ -1,19 +1,15 @@
 use std::{
     any::type_name,
-    cell::OnceCell,
     sync::{Arc, OnceLock},
 };
 
 use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 
-pub struct ResourceCell<T: Resource + 'static> {
-    cell: OnceLock<ResourceRef<T>>,
-}
-
-pub struct ResourceRef<T: Resource> {
-    definition: T::Defintion,
-    cached_ptr: hazarc::Cache<AtomicArc<T>>,
-}
+// TODO: if we abandon Cache, we can return fully owned ArcBorrows from read,
+// turning resources from `static` to `const` and never requiring $mut (no this! macro)
+//
+// while for our very-infrequent-update case the benefits of Cache (probably) outweight
+// drawbacks, a proper benchmark would be nice
 
 #[allow(async_fn_in_trait)]
 pub trait Resource: Sized {
@@ -25,6 +21,15 @@ pub trait Resource: Sized {
     }
 
     async fn load(definition: &Self::Defintion) -> Result<Self, Self::LoadError>;
+}
+
+pub struct ResourceCell<T: Resource + 'static> {
+    cell: OnceLock<ResourceRef<T>>,
+}
+
+pub struct ResourceRef<T: Resource> {
+    definition: T::Defintion,
+    cached_ptr: hazarc::Cache<AtomicArc<T>>,
 }
 
 // Expects the `self` cell to be initialized
@@ -79,6 +84,11 @@ impl<T: Resource> ResourceCell<T> {
         let this = this!(self.get_mut);
         this.cached_ptr.load()
     }
+
+    // TODO: consider adding a manual_update function
+    // on one hand, it is possible to add
+    // on another, it encourages very bad design practices
+    // (treating ResourceCell like an RWLock will result in abysmal performance)
 
     pub async fn reload(&self) -> Result<(), T::LoadError> {
         let this = this!(self.get);
