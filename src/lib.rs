@@ -72,15 +72,28 @@ impl<T: Resource> ResourceCell<T> {
     }
 
     /// This function is very cheap to call
+    ///
+    /// For initial data (before a reload), performance should be
+    /// comparable to a 'static pointer dereference
+    ///
+    /// For hot-reloaded data, performance is comparable to
+    /// loading from arc-swap (still very fast)
     pub fn read(&self) -> CachedOrReloaded<'_, Arc<T>> {
         let this = this!(self.get);
         this.cached_ptr.load_shared()
     }
 
-    /// Every read after this one and until the next change
+    /// TLDR: you probably do not need this, do benchmarks first
+    ///
+    /// For the 99.9% of applications, reading from initial and hot-reloaded
+    /// data is indistinguishable. For the other 0.1%, this function will
+    /// re-apply the optimization to reloaded data.
+    ///
+    /// Every *non-flushing* read after this one and until next change
     /// will be exactly as performant as if no change happened
     ///
-    /// for explanation, see `examples/advanced_flush.rs`
+    /// Note the *non-flushing* part. This means that replacing every read with
+    /// read_flush will reduce performance, not increase
     pub fn read_flush(&mut self) -> &Arc<T> {
         let this = this!(self.get_mut);
         this.cached_ptr.load()
