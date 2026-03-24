@@ -14,7 +14,7 @@ impl Resource for FileData {
     }
 }
 
-const BLOB: ResourceCell<FileData> = ResourceCell::define();
+static BLOB: ResourceCell<FileData> = ResourceCell::define();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {

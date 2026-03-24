@@ -1,14 +1,18 @@
-use std::{any::type_name, cell::OnceCell, sync::Arc};
+use std::{
+    any::type_name,
+    cell::OnceCell,
+    sync::{Arc, OnceLock},
+};
 
-use arc_swap::{ArcSwap, Guard};
+use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 
 pub struct ResourceCell<T: Resource + 'static> {
-    cell: OnceCell<ResourceRef<T>>,
+    cell: OnceLock<ResourceRef<T>>,
 }
 
 pub struct ResourceRef<T: Resource> {
     definition: T::Defintion,
-    ptr: ArcSwap<T>,
+    cached_ptr: hazarc::Cache<AtomicArc<T>>,
 }
 
 #[allow(async_fn_in_trait)]
@@ -23,22 +27,34 @@ pub trait Resource: Sized {
     async fn load(definition: &Self::Defintion) -> Result<Self, Self::LoadError>;
 }
 
+// Expects the `self` cell to be initialized
+macro_rules! this {
+    ($self:ident.$method:ident) => {
+        $self
+            .cell
+            .$method()
+            .expect(&format!("Resource {} not initialized", T::name()))
+    };
+}
+
 impl<T: Resource> ResourceCell<T> {
     pub const fn define() -> Self {
         Self {
-            cell: OnceCell::new(),
+            cell: OnceLock::new(),
         }
     }
 
-    // Init can only be called once per ResourceCell
-    // It is recommended to call it from `main`
+    /// Init can only be called once per ResourceCell
+    /// It is recommended to call it from `main`
     pub async fn init(&self, definition: T::Defintion) -> Result<(), T::LoadError> {
         let instance = T::load(&definition).await?;
+        let ptr = AtomicArc::from(Arc::new(instance));
+        let cached_ptr = Cache::new(ptr);
 
         // Store the defintion alongside pointer to allow for updates
         let resource_ref = ResourceRef {
             definition,
-            ptr: ArcSwap::from(Arc::new(instance)),
+            cached_ptr,
         };
 
         let ret = self.cell.set(resource_ref);
@@ -49,23 +65,26 @@ impl<T: Resource> ResourceCell<T> {
         Ok(())
     }
 
-    fn get_cell(&self) -> &ResourceRef<T> {
-        match self.cell.get() {
-            Some(resource_ref) => resource_ref,
-            None => panic!("Resource {} not initialized", T::name()),
-        }
+    /// This function is very cheap to call
+    pub fn read(&self) -> CachedOrReloaded<'_, Arc<T>> {
+        let this = this!(self.get);
+        this.cached_ptr.load_shared()
     }
 
-    /// This function is very cheap to call
-    pub fn read(&self) -> Guard<Arc<T>> {
-        self.get_cell().ptr.load()
+    /// Every read after this one and until the next change
+    /// will be exactly as performant as if no change happened
+    ///
+    /// for explanation, see `examples/advanced_flush.rs`
+    pub fn read_flush(&mut self) -> &Arc<T> {
+        let this = this!(self.get_mut);
+        this.cached_ptr.load()
     }
 
     pub async fn reload(&self) -> Result<(), T::LoadError> {
-        let this = self.get_cell();
+        let this = this!(self.get);
 
         let new_instance = T::load(&this.definition).await?;
-        this.ptr.store(Arc::new(new_instance));
+        this.cached_ptr.inner().store(Arc::new(new_instance));
 
         Ok(())
     }
