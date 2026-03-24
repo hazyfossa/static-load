@@ -1,20 +1,21 @@
 use std::{fs, io, path::PathBuf};
 
 use static_load::{Resource, ResourceCell};
+use tokio::signal::unix::SignalKind;
 
 struct FileData(Vec<u8>);
 
 impl Resource for FileData {
     type Defintion = PathBuf;
-    type LoadError = io::Error;
+    type Error = io::Error;
 
-    async fn load(path: &Self::Defintion) -> Result<Self, Self::LoadError> {
+    async fn load(path: &Self::Defintion) -> Result<Self, Self::Error> {
         // you can add validation, deserialization, etc here
         Ok(Self(fs::read(path)?))
     }
 }
 
-static BLOB: ResourceCell<FileData> = ResourceCell::define();
+static BLOB: ResourceCell<FileData> = ResourceCell::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -33,11 +34,20 @@ async fn any_function() {
 
     // You can trigger a reload from anywhere
     BLOB.reload().await.unwrap();
+}
 
-    // if you want to share a pre-read configuration,
-    // the return type of .read() clones to an Arc:
-    let _blob_as_previously_read = blob.clone();
+// A common pattern for resources
+// Note how BLOB easily crosses 'static task boundaries
+async fn reload_on_sighup() {
+    tokio::spawn(async move {
+        let mut sighup = tokio::signal::unix::signal(SignalKind::hangup())
+            .expect("Cannot setup signal handling");
 
-    // However, .read() is so fast, you can just
-    // read a new value whenever you need one!
+        loop {
+            sighup.recv().await;
+
+            // You should want to emit a warning here instead of .expect'ing
+            BLOB.reload().await.expect("Failed to update blob");
+        }
+    });
 }

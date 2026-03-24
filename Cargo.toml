@@ -5,7 +5,13 @@ edition = "2024"
 
 [dependencies]
 hazarc = "0.2.0"
-tokio = { version = "1.50.0", features = ["rt", "signal"] }
+
+# only for examples
+tokio = { version = "1.50.0", features = [
+    "rt",
+    "signal",
+    "macros",
+], optional = true }
 
 [features]
-examples = ["tokio/macros"]
+examples = ["dep:tokio"]

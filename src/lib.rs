@@ -1,5 +1,6 @@
 use std::{
     any::type_name,
+    error::Error,
     sync::{Arc, OnceLock},
 };
 
@@ -14,13 +15,13 @@ use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 #[allow(async_fn_in_trait)]
 pub trait Resource: Sized {
     type Defintion;
-    type LoadError;
+    type Error: Error + 'static;
 
     fn name() -> &'static str {
         type_name::<Self>()
     }
 
-    async fn load(definition: &Self::Defintion) -> Result<Self, Self::LoadError>;
+    async fn load(definition: &Self::Defintion) -> Result<Self, Self::Error>;
 }
 
 pub struct ResourceCell<T: Resource + 'static> {
@@ -43,7 +44,7 @@ macro_rules! this {
 }
 
 impl<T: Resource> ResourceCell<T> {
-    pub const fn define() -> Self {
+    pub const fn new() -> Self {
         Self {
             cell: OnceLock::new(),
         }
@@ -51,7 +52,7 @@ impl<T: Resource> ResourceCell<T> {
 
     /// Init can only be called once per ResourceCell
     /// It is recommended to call it from `main`
-    pub async fn init(&self, definition: T::Defintion) -> Result<(), T::LoadError> {
+    pub async fn init(&self, definition: T::Defintion) -> Result<(), T::Error> {
         let instance = T::load(&definition).await?;
         let ptr = AtomicArc::from(Arc::new(instance));
         let cached_ptr = Cache::new(ptr);
@@ -90,7 +91,7 @@ impl<T: Resource> ResourceCell<T> {
     // on another, it encourages very bad design practices
     // (treating ResourceCell like an RWLock will result in abysmal performance)
 
-    pub async fn reload(&self) -> Result<(), T::LoadError> {
+    pub async fn reload(&self) -> Result<(), T::Error> {
         let this = this!(self.get);
 
         let new_instance = T::load(&this.definition).await?;
@@ -99,3 +100,15 @@ impl<T: Resource> ResourceCell<T> {
         Ok(())
     }
 }
+
+// #[macro_export]
+// macro_rules! resources {
+//     ($vis:vis $modname:ident { $($name:ident : $type:path),* }) => {
+//         // TODO: $vis?
+//         $vis mod $modname {
+//             $(pub static $name: $crate::ResourceCell<$type> = $crate::ResourceCell::new();)*
+
+//             pub async fn update_all() -> Result<(), >
+//         }
+//     };
+// }
