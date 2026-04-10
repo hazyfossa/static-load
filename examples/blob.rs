@@ -1,4 +1,4 @@
-use std::{fs, io, path::PathBuf, sync::Arc};
+use std::{fs, io, path::PathBuf};
 
 use static_load::{Resource, ResourceCell};
 use tokio::signal::unix::SignalKind;
@@ -9,9 +9,9 @@ impl Resource for FileData {
     type Defintion = PathBuf;
     type Error = io::Error;
 
-    async fn load(path: &Self::Defintion) -> Result<Arc<Self>, Self::Error> {
+    async fn load(path: &Self::Defintion) -> Result<Self, Self::Error> {
         let buf = fs::read(path)?;
-        Ok(Self(buf).into())
+        Ok(Self(buf))
     }
 }
 

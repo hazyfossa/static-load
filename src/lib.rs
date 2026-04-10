@@ -13,7 +13,8 @@ use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 // drawbacks, a proper benchmark would be nice
 
 #[allow(async_fn_in_trait)]
-pub trait Resource {
+// TODO: allow unsized resources which manage their own Arc layout
+pub trait Resource: Sized {
     type Defintion;
     type Error: Error + 'static;
 
@@ -21,14 +22,17 @@ pub trait Resource {
         type_name::<Self>()
     }
 
-    async fn load(definition: &Self::Defintion) -> Result<Arc<Self>, Self::Error>;
+    async fn load(definition: &Self::Defintion) -> Result<Self, Self::Error>;
 }
+
+pub type ResourceRef<T> = CachedOrReloaded<'static, Arc<T>>;
 
 pub struct ResourceCell<T: Resource + 'static> {
-    cell: OnceLock<ResourceRef<T>>,
+    cell: OnceLock<ResourcePointer<T>>,
 }
 
-pub struct ResourceRef<T: Resource> {
+// Store resource definition inline to allow for updates
+struct ResourcePointer<T: Resource> {
     definition: T::Defintion,
     cached_ptr: hazarc::Cache<AtomicArc<T>>,
 }
@@ -58,12 +62,12 @@ impl<T: Resource> ResourceCell<T> {
         let cached_ptr = Cache::new(ptr);
 
         // Store the defintion alongside pointer to allow for updates
-        let resource_ref = ResourceRef {
+        let resource_ptr = ResourcePointer {
             definition,
             cached_ptr,
         };
 
-        let ret = self.cell.set(resource_ref);
+        let ret = self.cell.set(resource_ptr);
         if ret.is_err() {
             panic!("Resource {} is initialized twice", T::name())
         }
@@ -83,31 +87,15 @@ impl<T: Resource> ResourceCell<T> {
         this.cached_ptr.load_shared()
     }
 
-    /// TLDR: you probably do not need this, do benchmarks first
-    ///
-    /// For the 99.9% of applications, reading from initial and hot-reloaded
-    /// data is indistinguishable. For the other 0.1%, this function will
-    /// re-apply the optimization to reloaded data.
-    ///
-    /// Every *non-flushing* read after this one and until next change
-    /// will be exactly as performant as if no change happened
-    ///
-    /// Note the *non-flushing* part. This means that replacing every read with
-    /// read_flush will reduce performance, not increase
-    pub fn read_flush(&mut self) -> &Arc<T> {
-        let this = this!(self.get_mut);
-        this.cached_ptr.load()
+    pub fn manual_update(&self, new: T) {
+        let this = this!(self.get);
+        this.cached_ptr.inner().store(new.into());
     }
-
-    // TODO: consider adding a manual_update function
-    // on one hand, it is possible to add
-    // on another, it encourages very bad design practices
-    // (treating ResourceCell like an RWLock will result in abysmal performance)
 
     pub async fn reload(&self) -> Result<(), T::Error> {
         let this = this!(self.get);
 
-        let new_instance = T::load(&this.definition).await?;
+        let new_instance = T::load(&this.definition).await?.into();
         this.cached_ptr.inner().store(new_instance);
 
         Ok(())
