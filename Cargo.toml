@@ -5,11 +5,15 @@ edition = "2024"
 
 [dependencies]
 hazarc = "0.2.0"
+paste = { version = "1.0.15", optional = true }
+tokio = { version = "1", features = ["rt"], optional = true }
+
+[features]
+bundle = ["dep:tokio", "dep:paste"]
 
 [dev-dependencies]
 divan = "0.1.21"
-# only for examples
-tokio = { version = "1.50.0", features = ["rt", "signal", "macros"] }
+tokio = { version = "1", features = ["rt", "signal", "macros"] }
 
 [[bench]]
 name = "load"

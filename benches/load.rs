@@ -1,30 +1,41 @@
-use std::{hint::black_box, sync::Arc};
+use std::hint::black_box;
 
-use hazarc::atomic::CachedOrReloaded;
-use static_load::{Resource, ResourceCell};
+use static_load::{Resource, ResourceCell, ResourceRef};
 
 const THREADS: &[usize] = &[0, 1, 4, 16];
 
-struct Test;
-impl Resource for Test {
-    type Defintion = ();
+pub(crate) struct Noop;
+
+impl Resource for Noop {
+    type Definition = ();
     type Error = std::convert::Infallible;
-    async fn load(_: &Self::Defintion) -> Result<Self, Self::Error> {
-        Ok(Self.into())
+
+    fn load(_: &Self::Definition) -> impl Future<Output = Result<Self, Self::Error>> {
+        std::future::ready(Ok(Self))
     }
 }
 
-static RESOURCE: ResourceCell<Test> = ResourceCell::new();
+static RESOURCE: ResourceCell<Noop> = ResourceCell::new();
+static RELOADED_RESOURCE: ResourceCell<Noop> = ResourceCell::new();
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    // TODO: we should really init resource inside bench
-    // otherwise runs influence each other
+    // TODO: currently THREADS are mostly meaningless
+    // since we init outside
     RESOURCE.init(()).await;
+
+    RELOADED_RESOURCE.init(()).await;
+    RELOADED_RESOURCE.reload().await;
+
     divan::main();
 }
 
 #[divan::bench(threads = THREADS)]
-fn load_resouce() -> CachedOrReloaded<'static, Arc<Test>> {
+fn load_resource() -> ResourceRef<Noop> {
     black_box(&RESOURCE).read()
+}
+
+#[divan::bench(threads = THREADS)]
+fn load_reloaded_resource() -> ResourceRef<Noop> {
+    black_box(&RELOADED_RESOURCE).read()
 }

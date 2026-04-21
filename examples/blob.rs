@@ -6,10 +6,10 @@ use tokio::signal::unix::SignalKind;
 struct FileData(Vec<u8>);
 
 impl Resource for FileData {
-    type Defintion = PathBuf;
+    type Definition = PathBuf;
     type Error = io::Error;
 
-    async fn load(path: &Self::Defintion) -> Result<Self, Self::Error> {
+    async fn load(path: &Self::Definition) -> Result<Self, Self::Error> {
         let buf = fs::read(path)?;
         Ok(Self(buf))
     }

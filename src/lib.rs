@@ -15,14 +15,14 @@ use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 #[allow(async_fn_in_trait)]
 // TODO: allow unsized resources which manage their own Arc layout
 pub trait Resource: Sized {
-    type Defintion;
+    type Definition;
     type Error: Error + 'static;
 
     fn name() -> &'static str {
         type_name::<Self>()
     }
 
-    async fn load(definition: &Self::Defintion) -> Result<Self, Self::Error>;
+    async fn load(definition: &Self::Definition) -> Result<Self, Self::Error>;
 }
 
 pub type ResourceRef<T> = CachedOrReloaded<'static, Arc<T>>;
@@ -33,7 +33,7 @@ pub struct ResourceCell<T: Resource + 'static> {
 
 // Store resource definition inline to allow for updates
 struct ResourcePointer<T: Resource> {
-    definition: T::Defintion,
+    definition: T::Definition,
     cached_ptr: hazarc::Cache<AtomicArc<T>>,
 }
 
@@ -56,7 +56,7 @@ impl<T: Resource> ResourceCell<T> {
 
     /// Init can only be called once per ResourceCell
     /// It is recommended to call it from `main`
-    pub async fn init(&self, definition: T::Defintion) -> Result<(), T::Error> {
+    pub async fn init(&self, definition: T::Definition) -> Result<(), T::Error> {
         let instance = T::load(&definition).await?;
         let ptr = AtomicArc::from(instance);
         let cached_ptr = Cache::new(ptr);
@@ -102,14 +102,41 @@ impl<T: Resource> ResourceCell<T> {
     }
 }
 
-// #[macro_export]
-// macro_rules! resources {
-//     ($vis:vis $modname:ident { $($name:ident : $type:path),* }) => {
-//         // TODO: $vis?
-//         $vis mod $modname {
-//             $(pub static $name: $crate::ResourceCell<$type> = $crate::ResourceCell::new();)*
+#[cfg(feature = "bundle")]
+#[macro_export]
+macro_rules! resources {
+    ($vis:vis $name:ident {
+        $($resource:ident: $type:ty),* $(,)?
+    }) => {
+        $vis mod $name { paste::paste! {
+            use super::*;
+            use $crate::{Resource, ResourceCell};
 
-//             pub async fn update_all() -> Result<(), >
-//         }
-//     };
-// }
+            $(pub static [<$resource:upper>]: ResourceCell<$type> = ResourceCell::new();)*
+
+            pub async fn init($([<$resource:lower>]: <$type as Resource>::Definition),*) -> Result<(), String> {
+                $crate::resources!(@parallel "Initializing" ret => {
+                    $($resource.init([<$resource:lower>]))* }
+                );
+                ret
+            }
+
+
+            pub async fn reload_all() -> Result<(), String> {
+                $crate::resources!(@parallel "Reloading" ret => { $($resource.reload())* });
+                ret
+            }
+        }}
+    };
+
+    (@parallel $action:literal $ret:ident => { $( $resource:ident . $fn:tt($($arg:tt)?) )* }) => { paste::paste! {
+        let mut tasks = tokio::task::JoinSet::new();
+
+        $(tasks.spawn(async {
+            [<$resource:upper>].$fn($($arg)?).await
+            .map_err(|e| format!("{} resource {} failed: {e:?}", $action, stringify!($resource)))
+        });)*
+
+        let $ret = tasks.join_all().await.into_iter().collect();
+    }};
+}
