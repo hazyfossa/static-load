@@ -2,8 +2,6 @@ use std::hint::black_box;
 
 use static_load::{Resource, ResourceCell, ResourceRef};
 
-const THREADS: &[usize] = &[0, 1, 4, 16];
-
 pub(crate) struct Noop;
 
 impl Resource for Noop {
@@ -18,6 +16,9 @@ impl Resource for Noop {
 static RESOURCE: ResourceCell<Noop> = ResourceCell::new();
 static RELOADED_RESOURCE: ResourceCell<Noop> = ResourceCell::new();
 
+// TODO: support of variable thread count benchmarks requires native async support in divan
+// (or a switch of harness)
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     // TODO: currently THREADS are mostly meaningless
@@ -30,12 +31,12 @@ async fn main() {
     divan::main();
 }
 
-#[divan::bench(threads = THREADS)]
+#[divan::bench]
 fn load_resource() -> ResourceRef<Noop> {
     black_box(&RESOURCE).read()
 }
 
-#[divan::bench(threads = THREADS)]
+#[divan::bench]
 fn load_reloaded_resource() -> ResourceRef<Noop> {
     black_box(&RELOADED_RESOURCE).read()
 }
