@@ -1,4 +1,4 @@
-# static-load
+# static-reload
 A thin wrapper over hazard pointers to facilitate reloadable global state. 
 
 Unlike framework-level state (i.e axum), static-loaded resources cross 'static boundaries (i.e. tokio tasks)

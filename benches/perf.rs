@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use static_load::{Resource, ResourceCell, ResourceRef};
+use static_reload::{Resource, ResourceCell, ResourceRef};
 
 pub(crate) struct Noop;
 

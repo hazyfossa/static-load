@@ -1,6 +1,6 @@
 use std::{fs, io, path::PathBuf};
 
-use static_load::{Resource, ResourceCell};
+use static_reload::{Resource, ResourceCell};
 use tokio::signal::unix::SignalKind;
 
 struct FileData(Vec<u8>);

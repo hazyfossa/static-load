@@ -1,5 +1,5 @@
 [package]
-name = "static-load"
+name = "static-reload"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,14 +7,16 @@ edition = "2024"
 hazarc = "0.2.0"
 paste = { version = "1.0.15", optional = true }
 tokio = { version = "1", features = ["rt"], optional = true }
+tracing = { version = "0.1.44", optional = true }
 
 [features]
 bundle = ["dep:tokio", "dep:paste"]
+tracing = ["dep:tracing"]
 
 [dev-dependencies]
 divan = "0.1.21"
 tokio = { version = "1", features = ["rt", "signal", "macros"] }
 
 [[bench]]
-name = "load"
+name = "perf"
 harness = false

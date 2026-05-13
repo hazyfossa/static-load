@@ -1,6 +1,6 @@
 use std::{fs, io, path::PathBuf};
 
-use static_load::{Resource, resources};
+use static_reload::{Resource, resources};
 
 #[allow(unused)]
 struct FileData(Vec<u8>);
