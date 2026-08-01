@@ -1,6 +1,5 @@
 use std::{
     any::type_name,
-    error::Error,
     sync::{Arc, OnceLock},
 };
 
@@ -16,7 +15,7 @@ use hazarc::{AtomicArc, Cache, atomic::CachedOrReloaded};
 // TODO: allow unsized resources which manage their own Arc layout
 pub trait Resource: Sized {
     type Definition;
-    type Error: Error + 'static;
+    type Error;
 
     fn name() -> &'static str {
         type_name::<Self>()
@@ -39,11 +38,11 @@ struct ResourcePointer<T: Resource> {
 
 // Expects the `self` cell to be initialized
 macro_rules! this {
-    ($self:ident.$method:ident) => {
+    ($self:ident) => {
         $self
             .cell
-            .$method()
-            .expect(&format!("Resource {} not initialized", T::name()))
+            .get()
+            .expect(&format!("'{}' not initialized", T::name()))
     };
 }
 
@@ -69,7 +68,7 @@ impl<T: Resource> ResourceCell<T> {
 
         let ret = self.cell.set(resource_ptr);
         if ret.is_err() {
-            panic!("Resource {} is initialized twice", T::name())
+            panic!("'{}' is initialized twice", T::name())
         }
 
         Ok(())
@@ -83,17 +82,17 @@ impl<T: Resource> ResourceCell<T> {
     /// For hot-reloaded data, performance is comparable to
     /// loading from arc-swap (still very fast)
     pub fn read(&self) -> CachedOrReloaded<'_, Arc<T>> {
-        let this = this!(self.get);
+        let this = this!(self);
         this.cached_ptr.load_shared()
     }
 
     pub fn manual_update(&self, new: T) {
-        let this = this!(self.get);
+        let this = this!(self);
         this.cached_ptr.inner().store(new.into());
     }
 
     pub async fn reload(&self) -> Result<(), T::Error> {
-        let this = this!(self.get);
+        let this = this!(self);
 
         let new_instance = T::load(&this.definition).await?.into();
         this.cached_ptr.inner().store(new_instance);
